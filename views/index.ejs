@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Measurements dashboard</title>
+
+    <link rel="stylesheet" href="/styles.css" />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+
+<body>
+<div class="container">
+    <header class="header">
+        <div>
+            <h1>Measurements</h1>
+        </div>
+    </header>
+
+    <section class="panel">
+        <form id="form" class="form">
+            <div class="field">
+                <label for="field">Field</label>
+                <select id="field" name="field" required>
+                    <option value="temperature">temperature</option>
+                    <option value="humidity">humidity</option>
+                    <option value="windSpeed">windSpeed</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label for="start_date">Start Date</label>
+                <input id="start_date" name="start_date" type="date" required />
+            </div>
+
+            <div class="field">
+                <label for="end_date">End Date</label>
+                <input id="end_date" name="end_date" type="date" required />
+            </div>
+
+            <div class="field">
+                <label for="chartType">Type Graph</label>
+                <select id="chartType" name="chartType" required>
+                    <option value="line">Line</option>
+                    <option value="bar">Bar</option>
+                </select>
+            </div>
+
+            <div class="actions">
+                <button id="btn" class="btn" type="submit">Построить</button>
+                <button id="btnReset" class="btn btnSecondary" type="button">Сброс</button>
+            </div>
+        </form>
+
+        <div id="status" class="status" aria-live="polite"></div>
+    </section>
+
+    <section class="grid">
+        <div class="card">
+            <div class="cardTitle">Average</div>
+            <div class="cardValue" id="avg">—</div>
+        </div>
+        <div class="card">
+            <div class="cardTitle">Min</div>
+            <div class="cardValue" id="min">—</div>
+        </div>
+        <div class="card">
+            <div class="cardTitle">Max</div>
+            <div class="cardValue" id="max">—</div>
+        </div>
+        <div class="card">
+            <div class="cardTitle">Std Dev</div>
+            <div class="cardValue" id="stdDev">—</div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <div class="chartHeader">
+            <h2 class="h2">Graph</h2>
+            <div class="muted" id="count">Points: —</div>
+        </div>
+
+        <div class="chartWrap">
+            <canvas id="chart"></canvas>
+        </div>
+    </section>
+
+    <footer class="footer muted">
+        API: <code>/api/measurements</code> и <code>/api/measurements/metrics</code>
+    </footer>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
