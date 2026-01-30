@@ -33,7 +33,10 @@ function fmtNumber(v) {
 
 function buildUrl(path, params) {
     const u = new URL(path, window.location.origin);
-    Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+    Object.entries(params).forEach(([k, v]) => {
+        if (v === undefined || v === null || v === '') return;
+        u.searchParams.set(k, String(v));
+    });
     return u.toString();
 }
 
@@ -42,7 +45,7 @@ function clearUI() {
     minEl.textContent = '—';
     maxEl.textContent = '—';
     stdDevEl.textContent = '—';
-    countEl.textContent = 'Точек: —';
+    countEl.textContent = 'Points: —';
 }
 
 function destroyChart() {
@@ -52,7 +55,7 @@ function destroyChart() {
     }
 }
 
-function renderChart({ chartType, field, points }) {
+function renderChart({ chartType, field, points, startMs, endExclusiveMs }) {
     const labelMap = {
         temperature: 'Temperature',
         humidity: 'Humidity',
@@ -70,7 +73,13 @@ function renderChart({ chartType, field, points }) {
                 backgroundColor: isLine
                     ? 'rgba(116, 199, 255, 0.18)'
                     : 'rgba(116, 199, 255, 0.55)',
-                pointRadius: isLine ? 2 : 0,
+
+                tension: isLine ? 0.35 : 0,
+                cubicInterpolationMode: isLine ? 'monotone' : undefined,
+
+                spanGaps: isLine ? true : undefined,
+
+                pointRadius: isLine ? 0 : 0,
                 pointHoverRadius: 4,
                 borderWidth: isLine ? 2 : 1,
                 fill: isLine
@@ -96,6 +105,8 @@ function renderChart({ chartType, field, points }) {
         scales: {
             x: {
                 type: 'timeseries',
+                min: Number.isFinite(startMs) ? startMs : undefined,
+                max: Number.isFinite(endExclusiveMs) ? endExclusiveMs : undefined,
                 ticks: { color: 'rgba(234, 244, 255, 0.65)' },
                 grid: { color: 'rgba(116, 199, 255, 0.12)' }
             },
@@ -119,11 +130,54 @@ async function fetchJsonOrThrow(url, label) {
     return res.json();
 }
 
+function dateInputToLocalStartMs(dateStr) {
+    if (!dateStr) return NaN;
+    const [yyyy, mm, dd] = String(dateStr).split('-').map(Number);
+    if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return NaN;
+
+    const d = new Date(yyyy, mm - 1, dd);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+}
+
+function addDaysMs(ms, days) {
+    const d = new Date(ms);
+    d.setDate(d.getDate() + days);
+    return d.getTime();
+}
+
+function parseTimestampToMs(tsRaw) {
+    if (tsRaw === null || tsRaw === undefined) return NaN;
+
+    if (typeof tsRaw === 'number') return tsRaw;
+
+    if (tsRaw instanceof Date) return tsRaw.getTime();
+
+    const s = String(tsRaw);
+
+    const iso = Date.parse(s);
+    if (Number.isFinite(iso)) return iso;
+
+    const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})$/);
+    if (m1) {
+        const [, Y, Mo, D, H, Mi] = m1;
+        return new Date(Number(Y), Number(Mo) - 1, Number(D), Number(H), Number(Mi), 0, 0).getTime();
+    }
+
+    const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (m2) {
+        const [, Y, Mo, D, H, Mi] = m2;
+        return new Date(Number(Y), Number(Mo) - 1, Number(D), Number(H), Number(Mi), 0, 0).getTime();
+    }
+
+    return NaN;
+}
+
 function buildPoints(series, field) {
     const pts = series
         .map((row) => {
             const tsRaw = row?.timestamp;
-            const x = Date.parse(tsRaw);
+            const x = parseTimestampToMs(tsRaw);
             const yRaw = row?.value ?? row?.[field];
             const y = Number(yRaw);
 
@@ -134,29 +188,38 @@ function buildPoints(series, field) {
         .filter(Boolean)
         .sort((a, b) => a.x - b.x);
 
-    return pts;
+    const dedup = [];
+    for (const p of pts) {
+        const last = dedup[dedup.length - 1];
+        if (last && last.x === p.x) {
+            last.y = p.y;
+        } else {
+            dedup.push(p);
+        }
+    }
+
+    return dedup;
 }
 
-async function loadAndRender({ field, start_date, end_date, chartType }) {
-    setStatus('Загрузка данных…');
+async function loadAndRender({ field, startMs, endExclusiveMs, chartType }) {
+    setStatus('Load Data…');
     btn.disabled = true;
 
     try {
-        const seriesUrl = buildUrl('/api/measurements', { field, start_date, end_date });
+        const seriesUrl = buildUrl('/api/measurements', { field, startMs, endExclusiveMs });
         const series = await fetchJsonOrThrow(seriesUrl, 'Series');
         const points = buildPoints(series, field);
 
-        countEl.textContent = `Точек: ${points.length}`;
+        countEl.textContent = `Points: ${points.length}`;
 
         if (points.length === 0) {
             destroyChart();
             clearUI();
-            setStatus('Нет точек для выбранного периода/поля.', 'error');
+            setStatus('There are no points for the selected period/field.', 'error');
             return;
         }
 
-
-        const metricsUrl = buildUrl('/api/measurements/metrics', { field, start_date, end_date });
+        const metricsUrl = buildUrl('/api/measurements/metrics', { field, startMs, endExclusiveMs });
         const metrics = await fetchJsonOrThrow(metricsUrl, 'Metrics');
 
         avgEl.textContent = fmtNumber(metrics?.avg);
@@ -164,7 +227,7 @@ async function loadAndRender({ field, start_date, end_date, chartType }) {
         maxEl.textContent = fmtNumber(metrics?.max);
         stdDevEl.textContent = fmtNumber(metrics?.stdDev);
 
-        renderChart({ chartType, field, points });
+        renderChart({ chartType, field, points, startMs, endExclusiveMs });
 
         setStatus('Готово.');
     } catch (e) {
@@ -206,11 +269,12 @@ form.addEventListener('submit', (e) => {
     e.preventDefault();
 
     const field = fieldEl.value;
-    const start_date = startEl.value;
-    const end_date = endEl.value;
     const chartType = chartTypeEl.value;
 
-    loadAndRender({ field, start_date, end_date, chartType });
+    const startMs = dateInputToLocalStartMs(startEl.value);
+    const endExclusiveMs = addDaysMs(dateInputToLocalStartMs(endEl.value), 1);
+
+    loadAndRender({ field, startMs, endExclusiveMs, chartType });
 });
 
 setDefaultDates();

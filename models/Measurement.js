@@ -1,31 +1,31 @@
-const mongoose  = require('mongoose')
+const mongoose = require('mongoose');
 
 const measurementSchema = new mongoose.Schema(
     {
-        "timestamp": {type: Date,required: true,index: true},
-        "temperature": {type:Number, required:true},
-        "humidity": {type:Number},
-        "windSpeed": {type:Number},
+        timestamp: { type: Date, required: true, index: true },
+        temperature: { type: Number, required: true },
+        humidity: { type: Number },
+        windSpeed: { type: Number },
     },
     { versionKey: false }
-)
+);
 
 measurementSchema.statics.GetFilterByDateRange = async function ({ field, start, end }) {
+    const startDate = new Date(start);
     const endExclusive = new Date(end);
-    endExclusive.setDate(endExclusive.getDate() + 1);
 
     return this.find(
-        { timestamp: { $gte: start, $lt: endExclusive } },
+        { timestamp: { $gte: startDate, $lt: endExclusive } },
         { _id: 0, timestamp: 1, [field]: 1 }
     ).sort({ timestamp: 1 });
-}
+};
 
-measurementSchema.statics.GetMetrics= async function({ field, start, end }){
+measurementSchema.statics.GetMetrics = async function ({ field, start, end }) {
+    const startDate = new Date(start);
     const endExclusive = new Date(end);
-    endExclusive.setDate(endExclusive.getDate() + 1);
 
     const result = await this.aggregate([
-        { $match: { timestamp: { $gte: start, $lt: endExclusive } } },
+        { $match: { timestamp: { $gte: startDate, $lt: endExclusive } } },
         {
             $group: {
                 _id: null,
@@ -39,7 +39,6 @@ measurementSchema.statics.GetMetrics= async function({ field, start, end }){
     ]);
 
     return result[0] ?? null;
-}
+};
 
 module.exports = mongoose.model('Measurement', measurementSchema);
-
